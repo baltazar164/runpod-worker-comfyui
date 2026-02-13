@@ -36,6 +36,7 @@ jobs:
       release: ${{ steps.extract.outputs.release }}
       app: ${{ steps.extract.outputs.app }}
       registry_user: ${{ steps.extract.outputs.registry_user }}
+      registry_owner: ${{ steps.extract.outputs.registry_owner }}
       cuda_version_124: ${{ steps.extract.outputs.cuda_version_124 }}
       cuda_version_128: ${{ steps.extract.outputs.cuda_version_128 }}
       should_build: ${{ steps.check.outputs.should_build }}
@@ -53,10 +54,12 @@ jobs:
           REGISTRY_USER=$(grep 'variable "REGISTRY_USER"' -A 2 docker-bake.hcl | grep 'default' | sed 's/.*"\(.*\)"/\1/')
           CUDA_VERSION_124=$(grep 'variable "CUDA_VERSION_124"' -A 2 docker-bake.hcl | grep 'default' | sed 's/.*"\(.*\)"/\1/')
           CUDA_VERSION_128=$(grep 'variable "CUDA_VERSION_128"' -A 2 docker-bake.hcl | grep 'default' | sed 's/.*"\(.*\)"/\1/')
+          REGISTRY_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
           echo "release=${RELEASE}" >> $GITHUB_OUTPUT
           echo "app=${APP}" >> $GITHUB_OUTPUT
           echo "registry_user=${REGISTRY_USER}" >> $GITHUB_OUTPUT
+          echo "registry_owner=${REGISTRY_OWNER}" >> $GITHUB_OUTPUT
           echo "cuda_version_124=${CUDA_VERSION_124}" >> $GITHUB_OUTPUT
           echo "cuda_version_128=${CUDA_VERSION_128}" >> $GITHUB_OUTPUT
 
@@ -150,11 +153,11 @@ jobs:
           # Create an override file that forces ghcr.io for both CUDA targets
           cat > docker-bake.override.hcl << 'EOF'
           target "cuda124" {
-            tags = ["ghcr.io/${{ github.repository_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_124 }}"]
+            tags = ["ghcr.io/${{ needs.detect-changes.outputs.registry_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_124 }}"]
           }
 
           target "cuda128" {
-            tags = ["ghcr.io/${{ github.repository_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_128 }}"]
+            tags = ["ghcr.io/${{ needs.detect-changes.outputs.registry_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_128 }}"]
           }
           EOF
 
@@ -182,7 +185,7 @@ jobs:
           RELEASE="${{ needs.detect-changes.outputs.release }}"
           APP="${{ needs.detect-changes.outputs.app }}"
           REGISTRY="ghcr.io"
-          REGISTRY_USER="${{ github.repository_owner }}"
+          REGISTRY_USER="${{ needs.detect-changes.outputs.registry_owner }}"
           CUDA_124="${{ needs.detect-changes.outputs.cuda_version_124 }}"
           CUDA_128="${{ needs.detect-changes.outputs.cuda_version_128 }}"
 
@@ -205,7 +208,7 @@ jobs:
           RELEASE="${{ needs.detect-changes.outputs.release }}"
           APP="${{ needs.detect-changes.outputs.app }}"
           REGISTRY="ghcr.io"
-          REGISTRY_USER="${{ github.repository_owner }}"
+          REGISTRY_USER="${{ needs.detect-changes.outputs.registry_owner }}"
           CUDA_124="${{ needs.detect-changes.outputs.cuda_version_124 }}"
           CUDA_128="${{ needs.detect-changes.outputs.cuda_version_128 }}"
 
@@ -272,10 +275,10 @@ jobs:
           echo "### To pull these images:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "# CUDA 12.4" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ghcr.io/${{ github.repository_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_124 }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ needs.detect-changes.outputs.registry_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_124 }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# CUDA 12.8" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ghcr.io/${{ github.repository_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_128 }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ needs.detect-changes.outputs.registry_owner }}/${{ needs.detect-changes.outputs.app }}:${{ needs.detect-changes.outputs.release }}-cuda${{ needs.detect-changes.outputs.cuda_version_128 }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Note:** If the images are private, make them public at:" >> $GITHUB_STEP_SUMMARY
