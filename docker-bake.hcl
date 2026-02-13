@@ -11,7 +11,7 @@ variable "APP" {
 }
 
 variable "RELEASE" {
-    default = "4.0.2"
+    default = "4.0.3"
 }
 
 # CUDA 12.4 configuration

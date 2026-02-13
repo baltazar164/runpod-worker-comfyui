@@ -128,10 +128,33 @@ jobs:
 
       - name: Free up disk space
         run: |
+          echo "=== Before cleanup ==="
+          df -h /
+
+          # Remove swap
           sudo swapoff -a
-          sudo rm -rf /swapfile /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt clean
-          df -h
+          sudo rm -f /swapfile
+
+          # Remove large pre-installed tools and frameworks
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache /usr/share/swift \
+            /usr/local/.ghcup /usr/local/graalvm /usr/local/share/powershell \
+            /usr/local/share/chromium /usr/local/lib/node_modules
+
+          # Remove pre-installed apt packages we don't need
+          sudo apt-get purge -y \
+            dotnet-* aspnetcore-* azure-cli google-cloud-cli \
+            firefox mysql-* postgresql-* mongodb-* moby-* \
+            powershell php* snapd google-chrome-stable microsoft-edge-stable \
+            2>/dev/null || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+
+          # Remove pre-cached docker images
+          docker image prune -af
+
+          echo "=== After cleanup ==="
+          df -h /
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -189,18 +212,15 @@ jobs:
           CUDA_124="${{ needs.detect-changes.outputs.cuda_version_124 }}"
           CUDA_128="${{ needs.detect-changes.outputs.cuda_version_128 }}"
 
-          # Wait for registry to update
-          sleep 10
-
-          # Verify CUDA 12.4 image
+          # Verify CUDA 12.4 image exists in registry (without pulling)
           IMAGE_124="${REGISTRY}/${REGISTRY_USER}/${APP}:${RELEASE}-cuda${CUDA_124}"
           echo "Verifying image: $IMAGE_124"
-          docker pull $IMAGE_124 && echo "✅ SUCCESS: Image verified: $IMAGE_124" || echo "❌ FAILED: Could not pull image: $IMAGE_124"
+          docker manifest inspect $IMAGE_124 > /dev/null && echo "✅ SUCCESS: Image verified: $IMAGE_124" || echo "❌ FAILED: Image not found: $IMAGE_124"
 
-          # Verify CUDA 12.8 image
+          # Verify CUDA 12.8 image exists in registry (without pulling)
           IMAGE_128="${REGISTRY}/${REGISTRY_USER}/${APP}:${RELEASE}-cuda${CUDA_128}"
           echo "Verifying image: $IMAGE_128"
-          docker pull $IMAGE_128 && echo "✅ SUCCESS: Image verified: $IMAGE_128" || echo "❌ FAILED: Could not pull image: $IMAGE_128"
+          docker manifest inspect $IMAGE_128 > /dev/null && echo "✅ SUCCESS: Image verified: $IMAGE_128" || echo "❌ FAILED: Image not found: $IMAGE_128"
 
       - name: List built images
         id: list-images
