@@ -655,17 +655,20 @@ def handler(event):
                         'images': images
                     }
 
+                    # Disable for now - seems to actually cause issues instead of
+                    # preventing issues
+                    #
                     # Unload models and free memory after each request to prevent
                     # "Allocation on device" errors from lazy model loading
-                    try:
-                        requests.post(
-                            f'{BASE_URI}/free',
-                            json={'unload_models': True, 'free_memory': True},
-                            timeout=30
-                        )
-                        logging.info('Models unloaded and memory freed', job_id)
-                    except Exception as e:
-                        logging.warning(f'Failed to free memory: {e}', job_id)
+                    # try:
+                    #     requests.post(
+                    #         f'{BASE_URI}/free',
+                    #         json={'unload_models': True, 'free_memory': True},
+                    #         timeout=30
+                    #     )
+                    #     logging.info('Models unloaded and memory freed', job_id)
+                    # except Exception as e:
+                    #     logging.warning(f'Failed to free memory: {e}', job_id)
 
                     # Refresh worker if memory is low
                     memory_info = get_container_memory_info(job_id)
