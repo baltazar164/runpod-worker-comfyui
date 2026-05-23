@@ -594,6 +594,7 @@ def handler(event):
 
                 r = send_get_request(f'history/{prompt_id}')
                 resp_json = r.json()
+                print(f"DEBUG history response: {json.dumps(resp_json)}", flush=True)  # дебаг
 
                 if r.status_code == 200 and len(resp_json):
                     break
@@ -602,6 +603,7 @@ def handler(event):
                 retries += 1
 
             status = resp_json[prompt_id]['status']
+            print(f"DEBUG status: {json.dumps(status)}", flush=True)  # дебаг
 
             if status['status_str'] == 'success' and status['completed']:
                 # Job was processed successfully
