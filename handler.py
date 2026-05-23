@@ -609,6 +609,7 @@ def handler(event):
 
                 if len(outputs):
                     logging.info(f'Images generated successfully for prompt: {prompt_id}', job_id)
+                    print(f"DEBUG outputs raw: {json.dumps(outputs)}", flush=True)  # для дебага
                     output_images = get_output_images(outputs)
                     images = []
 
