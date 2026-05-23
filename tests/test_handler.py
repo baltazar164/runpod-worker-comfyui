@@ -536,6 +536,57 @@ MemAvailable:   12288000 kB
         assert result == {}
         mock_logging.error.assert_called()
 
+    @patch('handler.logging')
+    def test_meminfo_skips_unknown_lines_and_no_free(self, mock_logging):
+        """meminfo contains a non-matching line (Buffers) and no MemFree,
+        exercising the elif fall-through and the 'no used calc' branch."""
+        from handler import get_container_memory_info
+
+        meminfo_content = """MemTotal:       16384000 kB
+MemAvailable:   12288000 kB
+Buffers:          256000 kB
+"""
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/proc/meminfo':
+                m = mock_open(read_data=meminfo_content)()
+                m.readlines.return_value = meminfo_content.strip().split('\n')
+                return m
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            result = get_container_memory_info()
+
+        assert 'total' in result
+        assert 'available' in result
+        assert 'free' not in result
+        # Without 'free', 'used' should not have been computed from host meminfo.
+        assert 'used' not in result
+
+    @patch('handler.logging')
+    def test_handles_unlimited_memory_cgroups_v1_alt(self, mock_logging):
+        """v1 alt path with limit >= 2**63 (effectively unlimited)."""
+        from handler import get_container_memory_info
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/proc/meminfo':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/memory.max':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/memory/memory.limit_in_bytes':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/memory.limit_in_bytes':
+                return mock_open(read_data=str(2**63 + 1000))()
+            elif path == '/sys/fs/cgroup/memory.usage_in_bytes':
+                return mock_open(read_data='4294967296')()
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            result = get_container_memory_info()
+
+        assert 'limit' not in result
+        assert 'used' in result
+
 
 class TestContainerCPUInfo:
     """Tests for get_container_cpu_info function."""
@@ -684,6 +735,77 @@ class TestContainerCPUInfo:
 
         assert result == {}
         mock_logging.error.assert_called()
+
+    @patch('handler.logging')
+    def test_empty_cpuinfo_no_processors(self, mock_logging):
+        """/proc/cpuinfo with no 'processor' lines leaves available_cpus unset."""
+        from handler import get_container_cpu_info
+
+        cpuinfo_lines = ["model name\t: Intel\n", "vendor_id\t: GenuineIntel\n"]
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/proc/cpuinfo':
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=iter(cpuinfo_lines))
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            result = get_container_cpu_info()
+
+        assert 'available_cpus' not in result
+
+    @patch('handler.logging')
+    def test_handles_negative_quota_v1_alt(self, mock_logging):
+        """v1 alt path with cfs_quota_us <= 0 means no limit."""
+        from handler import get_container_cpu_info
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/proc/cpuinfo':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/cpu.max':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/cpu/cpu.cfs_quota_us':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/cpu.cfs_quota_us':
+                return mock_open(read_data='-1')()
+            elif path == '/sys/fs/cgroup/cpu.cfs_period_us':
+                return mock_open(read_data='100000')()
+            elif path == '/sys/fs/cgroup/cpu.stat':
+                raise FileNotFoundError()
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            result = get_container_cpu_info()
+
+        assert 'allocated_cpus' not in result
+
+    @patch('handler.logging')
+    def test_cpu_stat_without_usage_usec(self, mock_logging):
+        """cpu.stat with lines that don't include usage_usec exercises both the
+        skip-non-matching-line branch and loop-exits-without-finding branch."""
+        from handler import get_container_cpu_info
+
+        cpu_stat_lines = ["nr_periods 100\n", "nr_throttled 0\n"]
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/proc/cpuinfo':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/cpu.max':
+                return mock_open(read_data='200000 100000')()
+            elif path == '/sys/fs/cgroup/cpu.stat':
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=iter(cpu_stat_lines))
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            result = get_container_cpu_info()
+
+        assert result.get('allocated_cpus') == 2.0
+        assert 'usage_usec' not in result
 
 
 class TestContainerDiskInfo:
@@ -908,6 +1030,96 @@ class TestContainerDiskInfo:
 
         # Should hit the else branch for logging without job_id
         mock_logging.info.assert_called()
+
+    @patch('handler.logging')
+    @patch('handler.shutil.disk_usage')
+    def test_empty_io_stat_content(self, mock_disk_usage, mock_logging):
+        """io.stat exists but is empty -> io_stats_raw not set."""
+        from handler import get_container_disk_info
+
+        mock_disk_usage.return_value = (100 * 1024**3, 50 * 1024**3, 50 * 1024**3)
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/sys/fs/cgroup/io.stat':
+                return mock_open(read_data='')()
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            with patch('os.statvfs') as mock_statvfs:
+                mock_statvfs.return_value = MagicMock(f_files=1000000, f_ffree=500000)
+                result = get_container_disk_info()
+
+        assert 'io_stats_raw' not in result
+
+    @patch('handler.logging')
+    @patch('handler.shutil.disk_usage')
+    def test_blkio_v1_no_total_line(self, mock_disk_usage, mock_logging):
+        """blkio v1 file with no 'Total' line -> io_bytes not set, falls through."""
+        from handler import get_container_disk_info
+
+        mock_disk_usage.return_value = (100 * 1024**3, 50 * 1024**3, 50 * 1024**3)
+        io_content = "8:0 Read 1234567\n8:0 Write 7654321\n"
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/sys/fs/cgroup/io.stat':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes':
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=iter(io_content.split('\n')))
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            with patch('os.statvfs') as mock_statvfs:
+                mock_statvfs.return_value = MagicMock(f_files=1000000, f_ffree=500000)
+                result = get_container_disk_info()
+
+        assert 'io_bytes' not in result
+
+    @patch('handler.logging')
+    @patch('handler.shutil.disk_usage')
+    def test_blkio_v1_alt_no_total_line(self, mock_disk_usage, mock_logging):
+        """blkio v1 alt file with no 'Total' line -> io_bytes not set."""
+        from handler import get_container_disk_info
+
+        mock_disk_usage.return_value = (100 * 1024**3, 50 * 1024**3, 50 * 1024**3)
+        io_content = "8:0 Read 1234567\n8:0 Write 7654321\n"
+
+        def mock_open_func(path, *args, **kwargs):
+            if path == '/sys/fs/cgroup/io.stat':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes':
+                raise FileNotFoundError()
+            elif path == '/sys/fs/cgroup/blkio.throttle.io_service_bytes':
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=iter(io_content.split('\n')))
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise FileNotFoundError()
+
+        with patch('builtins.open', side_effect=mock_open_func):
+            with patch('os.statvfs') as mock_statvfs:
+                mock_statvfs.return_value = MagicMock(f_files=1000000, f_ffree=500000)
+                result = get_container_disk_info()
+
+        assert 'io_bytes' not in result
+
+    @patch('handler.logging')
+    @patch('handler.shutil.disk_usage')
+    def test_statvfs_zero_inodes(self, mock_disk_usage, mock_logging):
+        """statvfs returns f_files=0 -> inodes_usage_percent not computed."""
+        from handler import get_container_disk_info
+
+        mock_disk_usage.return_value = (100 * 1024**3, 50 * 1024**3, 50 * 1024**3)
+
+        with patch('builtins.open', side_effect=FileNotFoundError()):
+            with patch('os.statvfs') as mock_statvfs:
+                mock_statvfs.return_value = MagicMock(f_files=0, f_ffree=0)
+                result = get_container_disk_info()
+
+        assert 'inodes_usage_percent' not in result
+        assert result.get('total_inodes') == 0
 
 
 class TestHandlerErrorHandling:
@@ -1627,6 +1839,165 @@ class TestHandlerSuccessPath:
 
         assert 'error' in result
         assert 'refresh_worker' in result
+
+    @patch('handler.logging')
+    @patch('handler.get_container_memory_info')
+    @patch('handler.get_container_cpu_info')
+    @patch('handler.get_container_disk_info')
+    @patch('handler.send_post_request')
+    @patch('handler.send_get_request')
+    @patch('handler.os.path.exists')
+    def test_handler_image_with_unknown_type_is_skipped(
+        self, mock_exists, mock_get, mock_post,
+        mock_disk, mock_cpu, mock_memory, mock_logging
+    ):
+        """An output image whose type is neither 'output' nor 'temp' should
+        fall through both branches and be skipped without error."""
+        import handler
+
+        mock_memory.return_value = {'available': 10.0}
+        mock_cpu.return_value = {}
+        mock_disk.return_value = {'free_bytes': 10 * 1024 * 1024 * 1024}
+
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'prompt_id': 'test-prompt-123'}
+        )
+
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'test-prompt-123': {
+                    'status': {'status_str': 'success', 'completed': True, 'messages': []},
+                    'outputs': {
+                        '9': {'images': [{'filename': 'test.png', 'type': 'unknown'}]}
+                    }
+                }
+            }
+        )
+
+        mock_exists.return_value = True
+
+        event = {
+            'id': 'test-123',
+            'input': {
+                'workflow': 'custom',
+                'payload': {
+                    '9': {'class_type': 'SaveImage', 'inputs': {'filename_prefix': 'test'}}
+                }
+            }
+        }
+
+        result = handler.handler(event)
+
+        assert 'images' in result
+        assert result['images'] == []
+
+    @patch('handler.logging')
+    @patch('handler.get_container_memory_info')
+    @patch('handler.get_container_cpu_info')
+    @patch('handler.get_container_disk_info')
+    @patch('handler.send_post_request')
+    @patch('handler.send_get_request')
+    @patch('handler.os.path.exists')
+    def test_handler_temp_image_neither_path_exists(
+        self, mock_exists, mock_get, mock_post,
+        mock_disk, mock_cpu, mock_memory, mock_logging
+    ):
+        """Temp image where neither volume nor /tmp/temp path exists -
+        the inner os.path.exists check is False, loop continues."""
+        import handler
+
+        mock_memory.return_value = {'available': 10.0}
+        mock_cpu.return_value = {}
+        mock_disk.return_value = {'free_bytes': 10 * 1024 * 1024 * 1024}
+
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'prompt_id': 'test-prompt-123'}
+        )
+
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'test-prompt-123': {
+                    'status': {'status_str': 'success', 'completed': True, 'messages': []},
+                    'outputs': {
+                        '9': {'images': [{'filename': 'test.png', 'type': 'temp'}]}
+                    }
+                }
+            }
+        )
+
+        # Both the volume path and the /tmp/temp path miss.
+        mock_exists.return_value = False
+
+        event = {
+            'id': 'test-123',
+            'input': {
+                'workflow': 'custom',
+                'payload': {
+                    '9': {'class_type': 'SaveImage', 'inputs': {'filename_prefix': 'test'}}
+                }
+            }
+        }
+
+        result = handler.handler(event)
+
+        assert 'images' in result
+        assert result['images'] == []
+
+    @patch('handler.logging')
+    @patch('handler.get_container_memory_info')
+    @patch('handler.get_container_cpu_info')
+    @patch('handler.get_container_disk_info')
+    @patch('handler.send_post_request')
+    @patch('handler.send_get_request')
+    def test_handler_status_messages_without_execution_error(
+        self, mock_get, mock_post,
+        mock_disk, mock_cpu, mock_memory, mock_logging
+    ):
+        """Non-success status whose messages contain no execution_error entry:
+        the for loop visits a message, the key check is False, the loop exits."""
+        import handler
+
+        mock_memory.return_value = {'available': 10.0}
+        mock_cpu.return_value = {}
+        mock_disk.return_value = {'free_bytes': 10 * 1024 * 1024 * 1024}
+
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'prompt_id': 'test-prompt-123'}
+        )
+
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'test-prompt-123': {
+                    'status': {
+                        'status_str': 'error',
+                        'completed': False,
+                        'messages': [
+                            ['some_other_event', {'info': 'irrelevant'}]
+                        ]
+                    },
+                    'outputs': {}
+                }
+            }
+        )
+
+        event = {
+            'id': 'test-123',
+            'input': {
+                'workflow': 'custom',
+                'payload': {}
+            }
+        }
+
+        # Handler falls through without raising; returns None implicitly.
+        result = handler.handler(event)
+
+        assert result is None
 
 
 class TestSnapLogHandler:
