@@ -29,4 +29,4 @@ python main.py --port 3000 --temp-directory /tmp ${EXTRA_ARGS} > /workspace/logs
 deactivate
 
 echo "Starting Runpod Handler"
-python3 -u /handler.py
+"python${PYTHON_VERSION:-3}" -u /handler.py

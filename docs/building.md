@@ -34,3 +34,35 @@ architecture, so you will have to add the `--plaform` as follows:
 ```bash
 docker buildx build --push -t dockerhub-username/runpod-worker-comfyui:1.0.0 . --platform linux/amd64
 ```
+
+### Customizing the Python version
+
+The image defaults to Python `3.10`, which matches the version installed
+on a fresh Runpod Pytorch template. To build with a different Python
+version, override the `PYTHON_VERSION` variable when running
+`docker buildx bake`:
+
+```bash
+# Build both CUDA targets with Python 3.11
+PYTHON_VERSION=3.11 docker buildx bake
+
+# Build only the CUDA 12.8 target with Python 3.12
+PYTHON_VERSION=3.12 docker buildx bake cuda128
+```
+
+If you are building the image directly with `docker build` rather than
+`bake`, pass the same value as a build arg:
+
+```bash
+docker build --build-arg PYTHON_VERSION=3.11 -t dockerhub-username/runpod-worker-comfyui:1.0.0 .
+```
+
+Supported versions are whatever the
+[deadsnakes PPA](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa)
+ships for Ubuntu 22.04 (currently `3.10` through `3.13`).
+
+**Important:** the Python version baked into the image must match the
+Python version of the ComfyUI venv on your Network Volume. If you change
+`PYTHON_VERSION` here, recreate `/workspace/venv` on the Network Volume
+with the same interpreter (see
+[Install ComfyUI on your Network Volume](installing.md)).

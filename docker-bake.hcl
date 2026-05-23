@@ -14,6 +14,11 @@ variable "RELEASE" {
     default = "4.0.4"
 }
 
+# Python version (override with PYTHON_VERSION=3.11 docker buildx bake)
+variable "PYTHON_VERSION" {
+    default = "3.10"
+}
+
 # CUDA 12.4 configuration
 variable "CUDA_VERSION_124" {
     default = "12.4.1"
@@ -52,6 +57,7 @@ target "cuda124" {
         TORCH_VERSION = "${TORCH_VERSION_124}"
         XFORMERS_VERSION = "${XFORMERS_VERSION_124}"
         CUDA_SHORT = "cu124"
+        PYTHON_VERSION = "${PYTHON_VERSION}"
     }
 }
 
@@ -63,5 +69,6 @@ target "cuda128" {
         TORCH_VERSION = "${TORCH_VERSION_128}"
         XFORMERS_VERSION = "${XFORMERS_VERSION_128}"
         CUDA_SHORT = "cu128"
+        PYTHON_VERSION = "${PYTHON_VERSION}"
     }
 }

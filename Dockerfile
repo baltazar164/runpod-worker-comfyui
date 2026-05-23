@@ -4,24 +4,32 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu22.04
 ARG TORCH_VERSION=2.6.0
 ARG XFORMERS_VERSION=0.0.29.post3
 ARG CUDA_SHORT=cu124
+ARG PYTHON_VERSION=3.10
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_PREFER_BINARY=1 \
     PYTHONUNBUFFERED=1 \
     TORCH_VERSION=${TORCH_VERSION} \
     XFORMERS_VERSION=${XFORMERS_VERSION} \
-    CUDA_SHORT=${CUDA_SHORT}
+    CUDA_SHORT=${CUDA_SHORT} \
+    PYTHON_VERSION=${PYTHON_VERSION}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 WORKDIR /
 
-# Upgrade apt packages and install required dependencies
+# Upgrade apt packages, add the deadsnakes PPA, and install the requested Python
+# version along with the rest of the required dependencies.
 RUN apt update && \
     apt upgrade -y && \
+    apt install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt update && \
     apt install -y \
-      python3-dev \
-      python3-pip \
+      python${PYTHON_VERSION} \
+      python${PYTHON_VERSION}-dev \
+      python${PYTHON_VERSION}-venv \
+      python${PYTHON_VERSION}-distutils \
       fonts-dejavu-core \
       rsync \
       git \
@@ -43,8 +51,12 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean -y
 
-# Set Python
-RUN ln -s /usr/bin/python3.10 /usr/bin/python
+# Point python/python3 at the requested Python version
+RUN ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python && \
+    ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python3
+
+# Bootstrap pip for the requested Python version (deadsnakes packages don't ship pip)
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION}
 
 # Install Worker dependencies
 RUN pip install requests runpod==1.7.10
