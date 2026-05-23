@@ -11,7 +11,7 @@ variable "APP" {
 }
 
 variable "RELEASE" {
-    default = "4.0.4"
+    default = "4.1.0"
 }
 
 # Python version (override with PYTHON_VERSION=3.11 docker buildx bake)
