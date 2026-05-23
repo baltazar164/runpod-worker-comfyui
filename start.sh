@@ -25,7 +25,8 @@ if [ "${CUDA_SHORT}" = "cu128" ]; then
     EXTRA_ARGS="--disable-xformers"
 fi
 
-python main.py --port 3000 --temp-directory /tmp ${EXTRA_ARGS} > /workspace/logs/comfyui-serverless.log 2>&1 &
+python main.py --port 3000 --temp-directory /tmp ${EXTRA_ARGS} 2>&1 | tee /workspace/logs/comfyui-serverless.log &
+
 deactivate
 
 echo "Starting Runpod Handler"
