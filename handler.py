@@ -214,17 +214,15 @@ def get_workflow_payload(workflow_name, payload):
 
 
 def get_output_images(output):
-    """
-    Get the output images
-    """
     images = []
+    import json
+    print(f"DEBUG get_output_images: {json.dumps(output)}", flush=True)
 
     for key, value in output.items():
         if 'images' in value and isinstance(value['images'], list):
             images.append(value['images'][0])
 
     return images
-
 
 
 def create_unique_filename_prefix(payload):
