@@ -219,7 +219,7 @@ def get_output_images(output):
     print(f"DEBUG get_output_images: {json.dumps(output)}", flush=True)
 
     for key, value in output.items():
-        if 'images' in value and isinstance(value['images'], list):
+        if 'images' in value and isinstance(value['images'], list) and len(value['images']) > 0:
             images.append(value['images'][0])
 
     return images
