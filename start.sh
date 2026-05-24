@@ -46,7 +46,9 @@ if [ "${CUDA_SHORT}" = "cu128" ]; then
     EXTRA_ARGS="--disable-xformers"
 fi
 
-python main.py --port 3000 --temp-directory /tmp ${EXTRA_ARGS} 2>&1 | tee /workspace/logs/comfyui-serverless.log &
+python main.py --port 3000 --temp-directory /tmp \
+  --database-url sqlite:////tmp/comfyui-serverless.db \
+  ${EXTRA_ARGS} 2>&1 | tee /workspace/logs/comfyui-serverless.log &
 
 deactivate
 
