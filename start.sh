@@ -2,6 +2,27 @@
 
 echo "Worker Initiated"
 
+# ============================================================================
+# WORKER STARTUP IDENTIFICATION
+# ============================================================================
+echo ""
+echo "🔍 DEBUG: RunPod Worker Startup"
+echo "============================================================================"
+echo ""
+echo "📌 Build Identification:"
+echo "   Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "   Git Commit: $(cd /workspace && git rev-parse HEAD 2>/dev/null || echo 'ERROR: Not a git repo')"
+echo "   Git Branch: $(cd /workspace && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'N/A')"
+echo "   Git Remote: $(cd /workspace && git config --get remote.origin.url 2>/dev/null || echo 'N/A')"
+echo ""
+echo "🔧 Environment:"
+echo "   Python: $(python --version 2>&1)"
+echo "   ComfyUI: $(test -d /workspace/ComfyUI && echo 'FOUND' || echo 'NOT FOUND')"
+echo "   Volume: $(test -d /runpod-volume && echo 'MOUNTED' || echo 'NOT MOUNTED')"
+echo ""
+echo "============================================================================"
+echo ""
+
 echo "Symlinking files from Network Volume"
 rm -rf /workspace && \
   ln -s /runpod-volume /workspace
