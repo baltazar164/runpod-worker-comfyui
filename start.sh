@@ -2,6 +2,10 @@
 
 echo "Worker Initiated"
 
+# TO STORE LOGS
+mkdir -p /runpod-volume/logs
+exec > >(tee /runpod-volume/logs/start_${RUNPOD_POD_ID:-unknown}.log) 2>&1
+
 # ============================================================================
 # WORKER STARTUP IDENTIFICATION
 # ============================================================================
@@ -48,7 +52,7 @@ fi
 
 python main.py --port 3000 --temp-directory /tmp \
   --database-url sqlite:////tmp/comfyui-serverless.db \
-  ${EXTRA_ARGS} 2>&1 | tee /workspace/logs/comfyui-serverless.log &
+  ${EXTRA_ARGS} 2>&1 | tee /workspace/logs/comfyui_${RUNPOD_POD_ID:-unknown}.log &
 
 deactivate
 
